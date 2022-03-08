@@ -1,39 +1,78 @@
 const { response, request } = require("express");
+const bcryptjs = require("bcryptjs");
 
-const userGet = (req = request, res = response) => {
-  const { q, nombre = "no name", apikey, page = 1, limit } = req.query;
+const User = require("../models/usuario"); //mayuscula para crear instancias del modelo
+
+//GET
+const userGet = async (req = request, res = response) => {
+  //const { q, nombre = "no name", apikey, page = 1, limit } = req.query;
+
+  const query = { estado: true };
+  const { limite = 5, desde = 0 } = req.query;
+
+  //Promesas
+  // const usuarios = await User.find(query)
+  //   .skip(Number(desde))
+  //   .limit(Number(limite));
+
+  // const total = await User.countDocuments(query);
+  //------------------------------
+
+  //Coleccion de promesas, que las ejecuta simultaneamente, menos tiempo de espera
+  const [total, usuarios] = await Promise.all([
+    User.countDocuments(query),
+    User.find(query).skip(Number(desde)).limit(Number(limite)),
+  ]);
+
   res.json({
-    mgs: "get API - controller",
-    q,
-    nombre,
-    apikey,
-    page,
-    limit,
+    total,
+    usuarios,
   });
 };
 
-const userPut = (req, res) => {
-  const id = req.params.id;
+//POST
+const userPost = async (req = request, res = response) => {
+  //const { google, ...resto } = req.body; // para sacar un argumento y el resto por aparte
+  const { nombre, correo, password, rol } = req.body;
+  const user = new User({ nombre, correo, password, rol }); //Solo tomara las entidades definidas en el modelo
 
-  res.status(400).json({
-    mgs: "put API - controller",
-    id,
-  });
-};
+  //verificar si correo existe
 
-const userPost = (req, res) => {
-  const { nombre, edad } = req.body;
-  res.status(201).json({
-    mgs: "post API - controller",
-    nombre,
-    edad,
-  });
-};
+  //encriptar contraseña
+  const salt = bcryptjs.genSaltSync();
+  user.password = bcryptjs.hashSync(password, salt);
+  //guardar en bd
 
-const userDelete = (req, res) => {
+  await user.save(); //guardando el registro
   res.json({
-    mgs: "delete API - controller",
+    user,
   });
+};
+const userPut = async (req, res) => {
+  const { id } = req.params;
+  const { _id, password, google, correo, ...resto } = req.body;
+
+  //TODO VALIDAR CONTRA BASE DE DATOS
+
+  if (password) {
+    //encriptar contraseña
+    const salt = bcryptjs.genSaltSync();
+    resto.password = bcryptjs.hashSync(password, salt);
+  }
+
+  const usuario = await User.findByIdAndUpdate(id, resto);
+  res.json(usuario);
+};
+
+const userDelete = async (req, res) => {
+  const { id } = req.params;
+
+  //borrado fisico, NO RECOMENDADO
+  // const usuario = await User.findByIdAndDelete(id);
+
+  //CAMBIO DE ESTADO ACTIVO A FALSE
+  const usuario = await User.findByIdAndUpdate(id, { estado: false });
+  res.json(usuario);
 };
 
 module.exports = {
